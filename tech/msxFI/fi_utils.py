@@ -219,8 +219,6 @@ def inject_faults(weights, rep_conf=None, error_map=None):
       cell_error_map_index = int(np.log2(rep_conf[cell])) - 1
       cell_errors = error_map[cell_error_map_index]
 
-      total_num_faults = 0
-
       # Loop through all possible levels for cell
       for lvl in range(rep_conf[cell]):
         lvl_cell_addresses = np.where(weights[:, cell].cpu().numpy() == lvl)[0]
@@ -247,11 +245,15 @@ def inject_faults(weights, rep_conf=None, error_map=None):
             
             total_num_faults += num_lvl_faults
     
-    if (torch.sum(weights[:, cell] > max_level) != 0) or (torch.sum(weights[:, cell] < 0) != 0):
-      print("WARNING: Conversion error!")
+    if total_num_faults > 0:
+      print(f"Number of generated faults: {total_num_faults}")
+    else:
+      print(f"Number of generated faults: 0")
 
-    print(f"Number of generated faults: {total_num_faults}")
-    
+    if (torch.sum(weights[:, cell] > max_level) != 0) or (torch.sum(weights[:, cell] < 0) != 0):
+      print("ERROR: fault injection out of bound")
+      sys.exit(0)
+
     return weights
   
 def import_model_class(py_path):
