@@ -14,13 +14,13 @@ from .data_transforms import *
 from . import fi_config
 import importlib.util
 
-def get_error_map(max_lvls_cell, refresh_time=None, vth_sigma=0.05, custom_vdd=None):
+def get_error_map(max_lvls_cell, refresh_t=None, vth_sigma=0.05, custom_vdd=None):
   """
   Retrieve the correct per-storage-cell error map for the configured NVM settings according to the maximum levels-per-cell used
   OR generate DRAM error map based on physical parameters
 
   :param max_lvls_cell: Across the storage settings for fault injection experiment, provide the maximum number of levels-per-cell required (max 16 for 4BPC for provided fault models)
-  :param refresh_time: Refresh time in seconds for DRAM models
+  :param refresh_t: Refresh time in seconds for DRAM models
   :param vth_sigma: Standard deviation of Vth in Volts for DRAM fault rate calculation
   :param custom_vdd: Custom vdd in volts for DRAM models (optional)
   """
@@ -42,7 +42,7 @@ def get_error_map(max_lvls_cell, refresh_time=None, vth_sigma=0.05, custom_vdd=N
     tech_node_data = dram_params_data[selected_size]
     dist_args = (tech_node_data, fi_config.temperature, selected_size)
     
-    fault_prob = fault_rate_gen(dist_args, refresh_time, vth_sigma, custom_vdd)
+    fault_prob = fault_rate_gen(dist_args, refresh_t, vth_sigma, custom_vdd)
     error_map = np.zeros(1, dtype=object)  # DRAM uses SLC
     error_map[0] = np.zeros((2, 2))
     error_map[0][0, 1] = 0.0  # 0->1 fault probability = 0
@@ -87,13 +87,13 @@ def get_error_map(max_lvls_cell, refresh_time=None, vth_sigma=0.05, custom_vdd=N
   return error_map
 
  
-def fault_rate_gen(dist_args, refresh_time=None, vth_sigma=0.05, custom_vdd=None):
+def fault_rate_gen(dist_args, refresh_t=None, vth_sigma=0.05, custom_vdd=None):
   """
   Randomly generate fault rate per experiment and storage cell config according to fault model
 
   :param dist_args: arguments describing the distribution of level-to-level faults (programmed level means and sdevs) for RRAM, 
                     or tuple of (tech_node_data, temperature, selected_size) for DRAM
-  :param refresh_time: refresh time in seconds for DRAM (required for DRAM models)
+  :param refresh_t: refresh time in seconds for DRAM (required for DRAM models)
   :param vth_sigma: standard deviation of Vth in Volts for DRAM fault rate calculation
   :param custom_vdd: custom vdd in volts for DRAM models (optional)
   """
@@ -112,8 +112,8 @@ def fault_rate_gen(dist_args, refresh_time=None, vth_sigma=0.05, custom_vdd=None
     q = 1.60217663e-19  # Elementary charge in C
 
     # DRAM fault rate calculation
-    if refresh_time is None:
-      raise ValueError("refresh_time is required for DRAM models")
+    if refresh_t is None:
+      raise ValueError("refresh_t is required for DRAM models")
     tech_node_data, temperature, selected_size = dist_args
     cap_F = tech_node_data['CellCap']
     vdd = custom_vdd if custom_vdd is not None else tech_node_data['vdd']
@@ -137,7 +137,7 @@ def fault_rate_gen(dist_args, refresh_time=None, vth_sigma=0.05, custom_vdd=None
     # Convert to stddev of Ioff (log-normal to linear)
     sigma_Ioff = mu_Ioff * math.sqrt(math.exp(sigma_ln_Ioff**2) - 1)
 
-    I_critical = (cap_F * vdd / 2) / refresh_time
+    I_critical = (cap_F * vdd / 2) / refresh_t
     cdf = 1.0 - NormalDist(mu=mu_Ioff, sigma=sigma_Ioff).cdf(I_critical)
     cdf = max(0, cdf)
     
