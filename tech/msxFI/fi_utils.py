@@ -125,7 +125,7 @@ def fault_rate_gen(dist_args, refresh_t=None, vth_sigma=0.05, custom_vdd=None):
     
     mu_Ioff = tech_node_data['Ioff'][selected_temp]
 
-    # Calculate Ioff_sigma from vth_sigma
+    # Calculate Ioff distribution parameters
     Vt = (kB * selected_temp) / q
     # When Vgs ↑ by SS mV → Isub ↑ 10× ⇒ Isub ∝ 10^((Vgs - Vth) / SS)
     # Isub ≈ I0 · exp[(Vgs - Vth) / (n·Vt)] → exponential dominates
@@ -134,11 +134,21 @@ def fault_rate_gen(dist_args, refresh_t=None, vth_sigma=0.05, custom_vdd=None):
     n_factor = fi_config.SS * 1e-3 / (Vt * math.log(10))
     # Compute stddev of ln(Ioff) from threshold voltage variation
     sigma_ln_Ioff = vth_sigma / (n_factor * Vt)
-    # Convert to stddev of Ioff (log-normal to linear)
-    sigma_Ioff = mu_Ioff * math.sqrt(math.exp(sigma_ln_Ioff**2) - 1)
+    
+    # For log-normal distribution: if X ~ LogNormal(μ, σ), then ln(X) ~ Normal(μ, σ)
+    # We need μ and σ such that E[X] = mu_Ioff
+    # E[X] = exp(μ + σ²/2) → μ = ln(E[X]) - σ²/2
+    mu_ln_ioff = math.log(mu_Ioff) - (sigma_ln_Ioff**2) / 2
 
+    # Calculate critical current and fault probability using log-normal CDF
     I_critical = (cap_F * vdd / 2) / refresh_t
-    cdf = 1.0 - NormalDist(mu=mu_Ioff, sigma=sigma_Ioff).cdf(I_critical)
+    
+    # For log-normal distribution, P(X > I_critical) = P(ln(X) > ln(I_critical))
+    # where ln(X) ~ Normal(mu_ln_ioff, sigma_ln_Ioff)
+    ln_I_critical = math.log(I_critical)
+    
+    # P(Ioff > I_critical) using normal CDF in log space
+    cdf = 1.0 - NormalDist(mu=mu_ln_ioff, sigma=sigma_ln_Ioff).cdf(ln_I_critical)
     cdf = max(0, cdf)
     
     print(f"DRAM Params: Ioff={mu_Ioff:.2e}A, I_critical={I_critical:.2e}A, Bit-flip Rate (1->0): {cdf*100:.2f}%")
