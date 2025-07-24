@@ -1782,7 +1782,7 @@ void Technology::Initialize(int _featureSizeInNano, DeviceRoadmap _deviceRoadmap
     }
         // If FeFET, we scale ideal gate capacitance by standard factor across all tech nodes
         if (is_FeFET == true){
-	    cout << "Modify capIdealGate for FeFET:" << endl;
+	    	//cout << "Modify capIdealGate for FeFET:" << endl;
             capIdealGateFeFET = capIdealGate * 1.73;
         }
 
