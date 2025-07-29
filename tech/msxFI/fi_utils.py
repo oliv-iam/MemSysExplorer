@@ -14,13 +14,13 @@ from .data_transforms import *
 from . import fi_config
 import importlib.util
 
-def get_error_map(max_lvls_cell, refresh_time=None, vth_sigma=0.05, custom_vdd=None):
+def get_error_map(max_lvls_cell, refresh_t=None, vth_sigma=0.05, custom_vdd=None):
   """
   Retrieve the correct per-storage-cell error map for the configured NVM settings according to the maximum levels-per-cell used
   OR generate DRAM error map based on physical parameters
 
   :param max_lvls_cell: Across the storage settings for fault injection experiment, provide the maximum number of levels-per-cell required (max 16 for 4BPC for provided fault models)
-  :param refresh_time: Refresh time in seconds for DRAM models
+  :param refresh_t: Refresh time in seconds for DRAM models
   :param vth_sigma: Standard deviation of Vth in Volts for DRAM fault rate calculation
   :param custom_vdd: Custom vdd in volts for DRAM models (optional)
   """
@@ -42,7 +42,7 @@ def get_error_map(max_lvls_cell, refresh_time=None, vth_sigma=0.05, custom_vdd=N
     tech_node_data = dram_params_data[selected_size]
     dist_args = (tech_node_data, fi_config.temperature, selected_size)
     
-    fault_prob = fault_rate_gen(dist_args, refresh_time, vth_sigma, custom_vdd)
+    fault_prob = fault_rate_gen(dist_args, refresh_t, vth_sigma, custom_vdd)
     error_map = np.zeros(1, dtype=object)  # DRAM uses SLC
     error_map[0] = np.zeros((2, 2))
     error_map[0][0, 1] = 0.0  # 0->1 fault probability = 0
@@ -219,8 +219,6 @@ def inject_faults(weights, rep_conf=None, error_map=None):
       cell_error_map_index = int(np.log2(rep_conf[cell])) - 1
       cell_errors = error_map[cell_error_map_index]
 
-      total_num_faults = 0
-
       # Loop through all possible levels for cell
       for lvl in range(rep_conf[cell]):
         lvl_cell_addresses = np.where(weights[:, cell].cpu().numpy() == lvl)[0]
@@ -247,11 +245,15 @@ def inject_faults(weights, rep_conf=None, error_map=None):
             
             total_num_faults += num_lvl_faults
     
-    if (torch.sum(weights[:, cell] > max_level) != 0) or (torch.sum(weights[:, cell] < 0) != 0):
-      print("WARNING: Conversion error!")
+    if total_num_faults > 0:
+      print(f"Number of generated faults: {total_num_faults}")
+    else:
+      print(f"Number of generated faults: 0")
 
-    print(f"Number of generated faults: {total_num_faults}")
-    
+    if (torch.sum(weights[:, cell] > max_level) != 0) or (torch.sum(weights[:, cell] < 0) != 0):
+      print("ERROR: fault injection out of bound")
+      sys.exit(0)
+
     return weights
   
 def import_model_class(py_path):
