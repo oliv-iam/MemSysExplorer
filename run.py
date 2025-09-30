@@ -4,6 +4,7 @@ import argparse
 import random
 import subprocess
 import json
+import re
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -25,6 +26,44 @@ def parse_args():
             config = json.load(f)
 
     return config
+
+def parse_nvsim_output(raw_nvsim_output):
+    nvsim_output = {}
+    total_area_match = re.search(r'Total Area = ([\d.]+)mm\^2', raw_nvsim_output)
+    if total_area_match:
+        nvsim_output["total_area_mm2"] = float(total_area_match.group(1))
+
+    # Cache Hit Latency
+    hit_latency_match = re.search(r'Cache Hit Latency\s+=\s+([\d.]+)ns', raw_nvsim_output)
+    if hit_latency_match:
+        nvsim_output["cache_hit_latency_ns"] = float(hit_latency_match.group(1))
+
+    # Cache Miss Latency
+    miss_latency_match = re.search(r'Cache Miss Latency\s+=\s+([\d.]+)ns', raw_nvsim_output)
+    if miss_latency_match:
+        nvsim_output["cache_miss_latency_ns"] = float(miss_latency_match.group(1))
+
+    # Write Latency
+    write_latency_match = re.search(r'Cache Write Latency\s+=\s+([\d.]+)ns', raw_nvsim_output)
+    if write_latency_match:
+        nvsim_output["write_latency_ns"] = float(write_latency_match.group(1))
+
+    # Cache Read Dynamic Energy
+    read_energy_match = re.search(r'Cache Hit Dynamic Energy\s+=\s+([\d.]+)nJ', raw_nvsim_output)
+    if read_energy_match:
+        nvsim_output["read_dynamic_energy_nJ"] = float(read_energy_match.group(1))
+
+    # Cache Write Dynamic Energy
+    write_energy_match = re.search(r'Cache Write Dynamic Energy\s+=\s+([\d.]+)nJ', raw_nvsim_output)
+    if write_energy_match:
+        nvsim_output["write_dynamic_energy_nJ"] = float(write_energy_match.group(1))
+
+    # Leakage Power
+    leakage_match = re.search(r'Cache Total Leakage Power\s+=\s+([\d.]+)mW', raw_nvsim_output)
+    if leakage_match:
+        nvsim_output["leakage_power_mW"] = float(leakage_match.group(1))
+
+    return nvsim_output
 
 if __name__ == '__main__':
     
@@ -77,6 +116,8 @@ if __name__ == '__main__':
             print("NVSim binary not found. Running make in tech/ArrayCharacterization now")
         subprocess.run(["make"], cwd=Tech_Dir)
     
-    tech_result = subprocess.run(["./nvsim", chosen_config_path], capture_output=True, text=True, cwd=Tech_Dir)
-    print(tech_result.stdout)
+    raw_tech_result = subprocess.run(["./nvsim", chosen_config_path], capture_output=True, text=True, cwd=Tech_Dir)
+    # print(raw_tech_result.stdout)
+    tech_result = parse_nvsim_output(raw_tech_result.stdout)
+    print(tech_result)
 
