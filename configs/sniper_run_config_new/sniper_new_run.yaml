@@ -1,0 +1,26 @@
+system:
+  DesignTarget: cache
+
+  Capacity: 
+    - Value: 1
+      Unit: MB
+    - Value: 128
+      Unit: KB
+
+  
+  WordWidth: 128 # bits
+  
+  OptimizationTarget: WriteEDP
+
+apps:
+  run: new
+  profiler: sniper
+  config: configs/sniper_run_config_new/skylake.cfg
+  level: l2
+  multithread: false
+  executable: configs/sniper_run_config_new/test_sniper
+
+
+tech:
+  run: new
+  array_characterization_config: configs/tech_configs/sample_configs/sample_FeFET_32nm_tech_config.yaml

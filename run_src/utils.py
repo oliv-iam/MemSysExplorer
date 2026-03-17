@@ -5,18 +5,12 @@ import sys
 import yaml
 
 
-
 def extract_value(val):
-            if isinstance(val, str):
-                return float(val.split()[0])
-            return val
+    if isinstance(val, str):
+        return float(val.split()[0])
+    return val
 
 def choosing_tech_yaml(sys_cfg):
-    """
-    Choose appropriate tech YAML based on system config.
-    Currently supports only cache design target.
-    """
-
     if sys_cfg.get("DesignTarget") == "cache":
         print(f"Choosing default config: tech/ArrayCharacterization/sample_configs/sample_FeFET_32nm.yaml")
         return "tech/ArrayCharacterization/sample_configs/sample_FeFET_32nm.yaml"
@@ -25,22 +19,18 @@ def choosing_tech_yaml(sys_cfg):
         sys.exit(1)
 
 
-    
 def parse_array_char_output(yaml_file_path):
-    """
-    Parse NVSim YAML output file.
-    Returns a list of results (1 or more depending on optimization mode).
-    Backwards compatible: if single result, returns list with 1 element.
-    """
     with open(yaml_file_path, 'r') as f:
-        # Load all YAML documents (separated by ---)
         result = yaml.load(f, Loader=yaml.FullLoader)
     
-        data={}
+        data = {}
 
         if "CacheDesign" in result:
+            data["mem_cell_type"] = result['MemoryCell'].get('MemoryCellType', 'unknown')
+            data["capacity"] = f"{result['Capacity'].get('Value','N/A')}{result['Capacity'].get('Unit','')}"
+
             cache = result["CacheDesign"]
-            
+            data["optimization_target"] = cache.get("OptimizationTarget", "unknown")
             data["total_area"] = cache['Area']['Total_mm2']
             data["cache_hit_latency"] = cache['Timing']['CacheHitLatency_ns']
             data["cache_miss_latency"] = cache['Timing']['CacheMissLatency_ns']
@@ -55,7 +45,8 @@ def parse_array_char_output(yaml_file_path):
                 data["data_array_read_latency"] = data_results['Timing']['Read']['Latency_ns']
                 data["data_array_read_dynamic_energy"] = data_results['Power']['Read']['DynamicEnergy_pJ']
                 data["data_array_leakage_power"] = data_results['Power']['Leakage_mW']
-                
+                data["data_array_read_bw"] = data_results['Timing']['ReadBandwidth_Bps']
+                data["data_array_write_bw"] = data_results['Timing']['WriteBandwidth_Bps']
                 if "Write" in data_results["Power"]:
                     data["data_array_write_dynamic_energy"] = data_results['Power']['Write']['DynamicEnergy_pJ']
                 elif "Set" in data_results["Power"]:
@@ -63,24 +54,27 @@ def parse_array_char_output(yaml_file_path):
             
             if "TagArray" in result and "Results" in result["TagArray"]:
                 tag_results = result["TagArray"]["Results"]
-                data["tag_array_read_latency"] = tag_results['Timing']['Read']['Latency_ns'] 
+                data["tag_array_read_latency"] = tag_results['Timing']['Read']['Latency_ns']
                 data["tag_array_read_dynamic_energy"] = tag_results['Power']['Read']['DynamicEnergy_pJ']
                 data["tag_array_leakage_power"] = tag_results['Power']['Leakage_mW']
-                
                 if "Write" in tag_results["Power"]:
                     data["tag_array_write_dynamic_energy"] = tag_results['Power']['Write']['DynamicEnergy_pJ']
                 elif "Set" in tag_results["Power"]:
                     data["tag_array_write_dynamic_energy"] = tag_results['Power']['Set']['DynamicEnergy_pJ']
         
         else:
-            # Non-cache design
+            data["mem_cell_type"] = result['MemoryCell'].get('MemoryCellType', 'unknown')
+            data["capacity"] = f"{result['Capacity'].get('Value','N/A')}{result['Capacity'].get('Unit','')}"
+            data["optimization_target"] = result.get("OptimizationTarget", "unknown")
+
             if "Results" in result:
                 res = result["Results"]
                 data["total_area"] = res['Area']['Total']['Area_mm2']
                 data["read_latency"] = res['Timing']['Read']['Latency_ns']
+                data["read_bw"] = res['Timing']['ReadBandwidth_Bps']
+                data["write_bw"] = res['Timing']['WriteBandwidth_Bps']
                 data["read_dynamic_energy"] = res['Power']['Read']['DynamicEnergy_pJ']
                 data["leakage_power"] = res['Power']['Leakage_mW']
-                
                 if "Write" in res["Timing"]:
                     data["write_latency"] = res['Timing']['Write']['Latency_ns']
                     data["write_dynamic_energy"] = res['Power']['Write']['DynamicEnergy_pJ']
@@ -90,81 +84,150 @@ def parse_array_char_output(yaml_file_path):
     
     return data
 
-def results_to_csv(apps_cfg, sys_cfg, config_name, tech_result, model_result, csv_filepath):
+# This function serves the purpose to help sort our CSV results by capacity, which is currently stored as a string (e.g. "32KB", "1MB", etc.). 
+# It converts these strings into a numeric value for proper sorting.
+def parse_capacity(cap_str):
+    units = {'KB': 1, 'MB': 1024, 'GB': 1024**2}
+    for unit, multiplier in units.items():
+        if cap_str.upper().endswith(unit):
+            return int(cap_str[:-len(unit)]) * multiplier
+    return 0
+
+
+def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, model_result, csv_filepath):
     file_exists = os.path.exists(csv_filepath)
     with open(csv_filepath, 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
 
         if not file_exists:
-            header = [
-                "Config Name",
-                "Profiler",
-                "Cache Level",
-                "Design Target",
-                "Capacity (KB)",
-                "Word Width (bits)",
-                "Optimization Target",
-                "Total Reads",
-                "Total Writes",
-                "Total Hits",
-                "Total Misses",
-                "Total Read Latency (ms)",
-                "Total Write Latency (ms)",
-                "Total Hit Latency (ms)",
-                "Total Miss Latency (ms)",
-                "Total Latency (ms)",
-                "Total Read Energy (mJ)",
-                "Total Write Energy (mJ)",
-                "Total Hit Energy (mJ)",
-                "Total Miss Energy (mJ)",
-                "Total Energy (mJ)",
-                "Cache Hit Latency (ns)",
-                "Cache Miss Latency (ns)",
-                "Cache Write Latency (ns)",
-                "Cache Hit Energy (nJ)",
-                "Cache Miss Energy (nJ)",
-                "Cache Write Energy (nJ)",
-                "Leakage Power (mW)",
-                "Total Area (mm^2)"
-            ]
+            if sys_cfg.get("DesignTarget") == "cache":
+                header = [
+                    "PatternConfig Name",
+                    "Benchmark",
+                    "Profiler",
+                    "MemCellType",
+                    "Cache Level",
+                    "Design Target",
+                    "Capacity",
+                    "Word Width (bits)",
+                    "Optimization Target",
+                    "Total Reads",
+                    "Total Writes",
+                    "Total Read Latency (ms)",
+                    "Total Write Latency (ms)",
+                    "Total Latency (ms)",
+                    "Total Read Energy (mJ)",
+                    "Total Write Energy (mJ)",
+                    "Total Energy (mJ)",
+                    "Total Dynamic Read Power (mW)",
+                    "Total Dynamic Write Power (mW)",
+                    "Total Power (mW)",
+                    "Read Bandwidth Usage (%)",
+                    "Write Bandwidth Usage (%)",
+                    "Cache Hit Latency (ns)",
+                    "Cache Miss Latency (ns)",
+                    "Cache Write Latency (ns)",
+                    "Cache Hit Energy (nJ)",
+                    "Cache Miss Energy (nJ)",
+                    "Cache Write Energy (nJ)",
+                    "Leakage Power (mW)",
+                    "Total Area (mm^2)"
+                ]
+            else:
+                header = [
+                    "PatternConfig Name",
+                    "Benchmark",
+                    "Profiler",
+                    "MemCellType",
+                    "Design Target",
+                    "Capacity",
+                    "Word Width (bits)",
+                    "Optimization Target",
+                    "Total Reads",
+                    "Total Writes",
+                    "Total Read Latency (ms)",
+                    "Total Write Latency (ms)",
+                    "Total Latency (ms)",
+                    "Total Read Energy (mJ)",
+                    "Total Write Energy (mJ)",
+                    "Total Energy (mJ)",
+                    "Total Dynamic Read Power (mW)",
+                    "Total Dynamic Write Power (mW)",
+                    "Total Power (mW)",
+                    "Read Bandwidth Usage (%)",
+                    "Write Bandwidth Usage (%)",
+                    "Read Latency (ns)",
+                    "Write Latency (ns)",
+                    "Read Energy (nJ)",
+                    "Write Energy (nJ)",
+                    "Leakage Power (mW)",
+                    "Total Area (mm^2)"
+                ]
             writer.writerow(header)
         
-        # Extract tech data properly
-        if isinstance(tech_result, list):
-            tech_data = tech_result[0]
+        tech_data = tech_result
+
+        if sys_cfg.get("DesignTarget") == "cache":
+            row = [
+                config_name,
+                model_result.get('benchmark', 'unknown'),
+                apps_cfg.get('profiler', 'unknown'),
+                tech_data.get('mem_cell_type', 'unknown'),
+                apps_cfg.get('level', 'N/A'),
+                sys_cfg.get('DesignTarget', 'unknown'),
+                tech_data.get('capacity', 'N/A'),
+                sys_cfg.get('WordWidth', 'N/A'),
+                tech_data.get('optimization_target', 'N/A'),
+                apps_result.get('total_reads', 0),
+                apps_result.get('total_writes', 0),
+                model_result.get('total_read_latency_ms', 0),
+                model_result.get('total_write_latency_ms', 0),
+                model_result.get('total_latency_ms', 0),
+                model_result.get('total_read_energy_mJ', 0),
+                model_result.get('total_write_energy_mJ', 0),
+                model_result.get('total_energy_mJ', 0),
+                model_result.get('total_dynamic_read_power_mW', 0),      
+                model_result.get('total_dynamic_write_power_mW', 0),     
+                model_result.get('total_power_mW', 0),   
+                model_result.get('read_bw_utilization_%', 0),
+                model_result.get('write_bw_utilization_%', 0),   
+                tech_data.get('cache_hit_latency', 0),
+                tech_data.get('cache_miss_latency', 0),
+                tech_data.get('cache_write_latency', 0),
+                tech_data.get('cache_hit_dynamic_energy', 0),
+                tech_data.get('cache_miss_dynamic_energy', 0),
+                tech_data.get('cache_write_dynamic_energy', 0),
+                tech_data.get('cache_total_leakage_power', 0),
+                tech_data.get('total_area', 0)
+            ]
         else:
-            tech_data = tech_result
-        
-        # Write data row
-        row = [
-            config_name,
-            apps_cfg.get('profiler', 'unknown'),
-            apps_cfg.get('level', 'N/A'),
-            sys_cfg.get('DesignTarget', 'unknown'),
-            sys_cfg.get('Capacity', {}).get('Value', 'N/A'),
-            sys_cfg.get('WordWidth', 'N/A'),
-            sys_cfg.get('OptimizationTarget', 'N/A'),
-            model_result.get('total_reads', 0),
-            model_result.get('total_writes', 0),
-            model_result.get('total_hits', 0),
-            model_result.get('total_misses', 0),
-            model_result.get('total_hit_latency (ms)', 0),
-            model_result.get('total_write_latency (ms)', 0),
-            model_result.get('total_hit_latency (ms)', 0),
-            model_result.get('total_miss_latency (ms)', 0),
-            model_result.get('total_latency (ms)', 0),
-            model_result.get('total_hit_energy (mJ)', 0),
-            model_result.get('total_write_energy (mJ)', 0),
-            model_result.get('total_hit_energy (mJ)', 0),
-            model_result.get('total_miss_energy (mJ)', 0),
-            model_result.get('total_energy (mJ)', 0),
-            tech_data.get('cache_hit_latency', 0),
-            tech_data.get('cache_miss_latency', 0),
-            tech_data.get('cache_write_latency', 0),
-            tech_data.get('cache_hit_dynamic_energy', 0),
-            tech_data.get('cache_miss_dynamic_energy', 0),
-            tech_data.get('cache_write_dynamic_energy', 0),
-            tech_data.get('cache_total_leakage_power', 0),
-            tech_data.get('total_area', 0)
-        ]
+            row = [
+                config_name,
+                model_result.get('benchmark', 'unknown'),
+                apps_cfg.get('profiler', 'unknown'),
+                tech_data.get('mem_cell_type', 'unknown'),
+                sys_cfg.get('DesignTarget', 'unknown'),
+                tech_data.get('capacity', 'N/A'),
+                sys_cfg.get('WordWidth', 'N/A'),
+                tech_data.get('optimization_target', 'N/A'),
+                apps_result.get('total_reads', 0),
+                apps_result.get('total_writes', 0),
+                model_result.get('total_read_latency_ms', 0),
+                model_result.get('total_write_latency_ms', 0),
+                model_result.get('total_latency_ms', 0),
+                model_result.get('total_read_energy_mJ', 0),
+                model_result.get('total_write_energy_mJ', 0),
+                model_result.get('total_energy_mJ', 0),
+                model_result.get('total_dynamic_read_power_mW', 0),
+                model_result.get('total_dynamic_write_power_mW', 0),
+                model_result.get('total_power_mW', 0),
+                model_result.get('read_bw_utilization_%', 0),
+                model_result.get('write_bw_utilization_%', 0),
+                tech_data.get('read_latency', 0),
+                tech_data.get('write_latency', 0),
+                tech_data.get('read_dynamic_energy', 0),
+                tech_data.get('write_dynamic_energy', 0),
+                tech_data.get('leakage_power', 0),
+                tech_data.get('total_area', 0)
+            ]
         writer.writerow(row)
