@@ -249,23 +249,31 @@ def main():
                 raise FileNotFoundError(f"No pattern config JSON found in directory {apps_patternconfig}")
             apps_patternconfig = pattern_files
 
-    if isinstance(apps_patternconfig, list):
-        print(f"Multiple pattern config files found: {apps_patternconfig}")
-        apps_results = []
-        for pattern_file in pattern_files:
-            print(f"Parsing pattern config file: {pattern_file}")
-            with open(pattern_file, 'r') as f:
-                apps_result = json.load(f)
-            print(f"Apps output from {pattern_file}:")
-            print(apps_result)
-            apps_results.append(apps_result)
-    else:
-        with open(apps_patternconfig, 'r') as f:
-            apps_result = json.load(f)
-        print("\nApps output:")
-        print(apps_result)
-        apps_results = [apps_result]
-        pattern_files = [apps_patternconfig]
+        elif isinstance(apps_patternconfig, list):
+            print(f"Multiple pattern config files found: {apps_patternconfig}")
+            apps_results = []
+            for pattern_file in pattern_files:
+                print(f"Parsing pattern config file: {pattern_file}")
+                with open(pattern_file, 'r') as f:
+                    apps_result = json.load(f)
+                print(f"Apps output from {pattern_file}:")
+                print(apps_result)
+                apps_results.append(apps_result)
+        else:
+            if apps_patternconfig.lower().endswith(".csv"):
+                print(f"Parsing CSV file: {apps_patternconfig}")
+                apps_csv = pd.read_csv(apps_patternconfig)
+                apps_csv.columns = apps_csv.columns.str.replace(r'\s*\(.*\)', '', regex=True)
+                apps_results = apps_csv.to_dict(orient='records')
+                print(apps_results)
+                pattern_files = [f"row: {i}" for i in range(len(apps_results))] # TODO: descriptive names
+            else:
+                with open(apps_patternconfig, 'r') as f:
+                    apps_result = json.load(f)
+                print("\nApps output:")
+                print(apps_result)
+                apps_results = [apps_result]
+                pattern_files = [apps_patternconfig]
 
     # Array Characterization
     if tech_cfg['run'] == "new":
