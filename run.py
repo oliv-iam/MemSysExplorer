@@ -262,11 +262,8 @@ def main():
         else:
             if apps_patternconfig.lower().endswith(".csv"):
                 print(f"Parsing CSV file: {apps_patternconfig}")
-                apps_csv = pd.read_csv(apps_patternconfig)
-                apps_csv.columns = apps_csv.columns.str.replace(r'\s*\(.*\)', '', regex=True)
-                apps_results = apps_csv.to_dict(orient='records')
+                apps_results, pattern_files = parse_apps_csv(apps_patternconfig, apps_cfg['profiler'])
                 print(apps_results)
-                pattern_files = [f"row: {i}" for i in range(len(apps_results))] # TODO: descriptive names
             else:
                 with open(apps_patternconfig, 'r') as f:
                     apps_result = json.load(f)

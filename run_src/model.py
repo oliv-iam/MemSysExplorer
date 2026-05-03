@@ -76,7 +76,6 @@ def evaluate(sys_cfg, apps_result, tech_result):
         write_bw_utilization = 100 * (wps * WordWidth) / write_bw if write_bw else 0
 
     return {
-        "benchmark":                    benchmark,
         "total_read_latency_ms":        read_latency_total,
         "total_write_latency_ms":       write_latency_total,
         "total_latency_ms":             total_latency,

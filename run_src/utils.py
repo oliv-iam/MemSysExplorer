@@ -1,8 +1,8 @@
 import csv
-import re
 import os
 import sys
 import yaml
+import pandas as pd
 
 
 def extract_value(val):
@@ -17,6 +17,23 @@ def choosing_tech_yaml(sys_cfg):
     else:
         print(f"Unsupported DesignTarget '{sys_cfg.get('DesignTarget')}'. Only 'cache' is supported.")
         sys.exit(1)
+
+
+def parse_apps_csv(filename, profiler):
+    apps_csv = pd.read_csv(filename)
+    apps_csv.columns = apps_csv.columns.str.replace(r'\s*\(.*\)', '', regex=True)
+    benchmark_info = ['Benchmark Suite', 'Suite', 'Workload']
+    if profiler == "sniper":
+        benchmark_info.append('benchmark_name')
+    apps_csv['benchmark'] = apps_csv[benchmark_info].astype(str).agg('_'.join, axis=1)
+    cols = ['benchmark', 'execution_time', 'total_reads', 'total_writes']
+    if profiler != "dynamorio":
+        cols.extend(['load_hits', 'load_misses', 'store_hits', 'store_misses'])
+    apps_results = apps_csv[cols].to_dict(orient='records')
+    name = os.path.basename(filename)
+    name = os.path.splitext(name)[0]
+    pattern_files = [name for i in range(len(apps_results))]
+    return apps_results, pattern_files
 
 
 def parse_array_char_output(yaml_file_path):
@@ -113,6 +130,15 @@ def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, mod
                     "Optimization Target",
                     "Total Reads",
                     "Total Writes",
+                    "Execution Time (s)",
+                    "Cache Hit Latency (ns)",
+                    "Cache Miss Latency (ns)",
+                    "Cache Write Latency (ns)",
+                    "Cache Hit Energy (nJ)",
+                    "Cache Miss Energy (nJ)",
+                    "Cache Write Energy (nJ)",
+                    "Leakage Power (mW)",
+                    "Total Area (mm^2)",
                     "Total Read Latency (ms)",
                     "Total Write Latency (ms)",
                     "Total Latency (ms)",
@@ -123,15 +149,7 @@ def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, mod
                     "Total Dynamic Write Power (mW)",
                     "Total Power (mW)",
                     "Read Bandwidth Usage (%)",
-                    "Write Bandwidth Usage (%)",
-                    "Cache Hit Latency (ns)",
-                    "Cache Miss Latency (ns)",
-                    "Cache Write Latency (ns)",
-                    "Cache Hit Energy (nJ)",
-                    "Cache Miss Energy (nJ)",
-                    "Cache Write Energy (nJ)",
-                    "Leakage Power (mW)",
-                    "Total Area (mm^2)"
+                    "Write Bandwidth Usage (%)"
                 ]
             else:
                 header = [
@@ -145,6 +163,13 @@ def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, mod
                     "Optimization Target",
                     "Total Reads",
                     "Total Writes",
+                    "Execution Time (us)",
+                    "Read Latency (ns)",
+                    "Write Latency (ns)",
+                    "Read Energy (nJ)",
+                    "Write Energy (nJ)",
+                    "Leakage Power (mW)",
+                    "Total Area (mm^2)",
                     "Total Read Latency (ms)",
                     "Total Write Latency (ms)",
                     "Total Latency (ms)",
@@ -155,13 +180,7 @@ def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, mod
                     "Total Dynamic Write Power (mW)",
                     "Total Power (mW)",
                     "Read Bandwidth Usage (%)",
-                    "Write Bandwidth Usage (%)",
-                    "Read Latency (ns)",
-                    "Write Latency (ns)",
-                    "Read Energy (nJ)",
-                    "Write Energy (nJ)",
-                    "Leakage Power (mW)",
-                    "Total Area (mm^2)"
+                    "Write Bandwidth Usage (%)"
                 ]
             writer.writerow(header)
         
@@ -170,7 +189,7 @@ def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, mod
         if sys_cfg.get("DesignTarget") == "cache":
             row = [
                 config_name,
-                model_result.get('benchmark', 'unknown'),
+                apps_result.get('benchmark', 'unknown'),
                 apps_cfg.get('profiler', 'unknown'),
                 tech_data.get('mem_cell_type', 'unknown'),
                 apps_cfg.get('level', 'N/A'),
@@ -180,6 +199,15 @@ def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, mod
                 tech_data.get('optimization_target', 'N/A'),
                 apps_result.get('total_reads', 0),
                 apps_result.get('total_writes', 0),
+                apps_result.get('execution_time', 0),
+                tech_data.get('cache_hit_latency', 0),
+                tech_data.get('cache_miss_latency', 0),
+                tech_data.get('cache_write_latency', 0),
+                tech_data.get('cache_hit_dynamic_energy', 0),
+                tech_data.get('cache_miss_dynamic_energy', 0),
+                tech_data.get('cache_write_dynamic_energy', 0),
+                tech_data.get('cache_total_leakage_power', 0),
+                tech_data.get('total_area', 0),
                 model_result.get('total_read_latency_ms', 0),
                 model_result.get('total_write_latency_ms', 0),
                 model_result.get('total_latency_ms', 0),
@@ -190,20 +218,12 @@ def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, mod
                 model_result.get('total_dynamic_write_power_mW', 0),     
                 model_result.get('total_power_mW', 0),   
                 model_result.get('read_bw_utilization_%', 0),
-                model_result.get('write_bw_utilization_%', 0),   
-                tech_data.get('cache_hit_latency', 0),
-                tech_data.get('cache_miss_latency', 0),
-                tech_data.get('cache_write_latency', 0),
-                tech_data.get('cache_hit_dynamic_energy', 0),
-                tech_data.get('cache_miss_dynamic_energy', 0),
-                tech_data.get('cache_write_dynamic_energy', 0),
-                tech_data.get('cache_total_leakage_power', 0),
-                tech_data.get('total_area', 0)
+                model_result.get('write_bw_utilization_%', 0)
             ]
         else:
             row = [
                 config_name,
-                model_result.get('benchmark', 'unknown'),
+                apps_result.get('benchmark', 'unknown'),
                 apps_cfg.get('profiler', 'unknown'),
                 tech_data.get('mem_cell_type', 'unknown'),
                 sys_cfg.get('DesignTarget', 'unknown'),
@@ -212,6 +232,13 @@ def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, mod
                 tech_data.get('optimization_target', 'N/A'),
                 apps_result.get('total_reads', 0),
                 apps_result.get('total_writes', 0),
+                apps_result.get('execution_time', 0),
+                tech_data.get('read_latency', 0),
+                tech_data.get('write_latency', 0),
+                tech_data.get('read_dynamic_energy', 0),
+                tech_data.get('write_dynamic_energy', 0),
+                tech_data.get('leakage_power', 0),
+                tech_data.get('total_area', 0),
                 model_result.get('total_read_latency_ms', 0),
                 model_result.get('total_write_latency_ms', 0),
                 model_result.get('total_latency_ms', 0),
@@ -222,12 +249,6 @@ def results_to_csv(apps_cfg, sys_cfg, config_name, apps_result, tech_result, mod
                 model_result.get('total_dynamic_write_power_mW', 0),
                 model_result.get('total_power_mW', 0),
                 model_result.get('read_bw_utilization_%', 0),
-                model_result.get('write_bw_utilization_%', 0),
-                tech_data.get('read_latency', 0),
-                tech_data.get('write_latency', 0),
-                tech_data.get('read_dynamic_energy', 0),
-                tech_data.get('write_dynamic_energy', 0),
-                tech_data.get('leakage_power', 0),
-                tech_data.get('total_area', 0)
+                model_result.get('write_bw_utilization_%', 0)
             ]
         writer.writerow(row)
