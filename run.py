@@ -378,7 +378,7 @@ def main():
         for i, app_result in enumerate(apps_results):
             apps_result_name = os.path.splitext(os.path.basename(pattern_files[i]))[0]
 
-            if apps_cfg['profiler'] == "sniper":
+            if apps_cfg['profiler'] == "sniper" and not apps_patternconfig.lower().endswith(".csv"):
                 if apps_cfg['multithread']:
                     print("\nEvaluating multiple benchmarks from Sniper output...")
                     for j, benchmark in enumerate(app_result):
